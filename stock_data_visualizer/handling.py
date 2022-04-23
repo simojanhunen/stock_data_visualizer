@@ -6,6 +6,10 @@ Handles communicating with different stock APIs
 import pandas_datareader as pdd
 import pandas as pd
 from enum import Enum
+from datetime import datetime, timedelta
+
+
+MIN_READABLE_YEAR = 1971
 
 
 class StockTimeFrame(Enum):
@@ -21,13 +25,6 @@ class StockTimeFrame(Enum):
     YEAR5 = 5
     MAX = 6
 
-    def get_dates(self):
-        """
-        Returns end and start date for the chosen enumeration, e.g.,
-            return (start_date, end_date)
-        """
-        raise NotImplementedError()
-
 
 class StockDataHandling:
     """
@@ -40,21 +37,62 @@ class StockDataHandling:
     def get_available_time_frames(self):
         return STOCK_TIME_FRAMES
 
-    def get_yahoo_stock(self, stock_ticker, time_frame):
+    def convert_time_frame_to_datetime(self, time_frame):
+        end_time = datetime.now()
+        start_time = end_time
+
         if time_frame == StockTimeFrame.YTD:
-            return pdd.DataReader(stock_ticker, "yahoo", "2022-01-01", "2022-04-23")
+            start_time = datetime(end_time.year, 1, 1)
         elif time_frame == StockTimeFrame.DAY:
-            raise NotImplementedError()
+            start_time = datetime(end_time.year, end_time.month, end_time.day)
         elif time_frame == StockTimeFrame.WEEK:
-            raise NotImplementedError()
+            start_time = end_time - timedelta(days=7)
         elif time_frame == StockTimeFrame.YEAR1:
-            raise NotImplementedError()
+            start_time = datetime(
+                end_time.year - 1,
+                end_time.month,
+                end_time.day,
+                end_time.hour,
+                end_time.minute,
+                end_time.second,
+                end_time.microsecond,
+                end_time.tzinfo,
+            )
         elif time_frame == StockTimeFrame.YEAR3:
-            raise NotImplementedError()
+            start_time = datetime(
+                end_time.year - 3,
+                end_time.month,
+                end_time.day,
+                end_time.hour,
+                end_time.minute,
+                end_time.second,
+                end_time.microsecond,
+                end_time.tzinfo,
+            )
         elif time_frame == StockTimeFrame.YEAR5:
-            raise NotImplementedError()
+            start_time = datetime(
+                end_time.year - 5,
+                end_time.month,
+                end_time.day,
+                end_time.hour,
+                end_time.minute,
+                end_time.second,
+                end_time.microsecond,
+                end_time.tzinfo,
+            )
         elif time_frame == StockTimeFrame.MAX:
-            raise NotImplementedError()
+            start_time = datetime(MIN_READABLE_YEAR, 1, 1)
+
+        return start_time, end_time
+
+    def get_yahoo_stock(self, stock_ticker, time_frame):
+        start_time, end_time = self.convert_time_frame_to_datetime(time_frame)
+        try:
+            data_df = pdd.DataReader(stock_ticker, "yahoo", start_time, end_time)
+            return data_df
+        except:
+            print(f"Couldn't read stock data.")
+            return pd.DataFrame()
 
     def normalize_stock_data(stock_data_df):
         normalized_stock_data_df = (
