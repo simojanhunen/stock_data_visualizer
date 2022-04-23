@@ -1,0 +1,4 @@
+- Add/remove certain stocks
+- Figures of YTD, 1y, 3y, 5y, MAX, situations with normalization
+- Geographical analysis
+- Profit analysis
