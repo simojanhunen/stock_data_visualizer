@@ -3,7 +3,10 @@ Creates GUI for the visualization.
 """
 
 import sys
-from PySide2.QtCore import Qt
+import os
+
+from PySide2.QtCore import Qt, QSize
+from PySide2.QtGui import QIcon
 from PySide2.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -18,55 +21,66 @@ from PySide2.QtWidgets import (
     QFileDialog,
 )
 
+from matplotlib.backends.qt_compat import QtWidgets
+from matplotlib.backends.backend_qtagg import FigureCanvas
+from matplotlib.figure import Figure
+
+from handling import StockDataHandling, StockTimeFrame
+
 
 class MainWindow(QMainWindow):
     """
     Main window controller class
     """
 
-    def __init__(self, app, title=None, user_file=None):
+    def __init__(self, app, title=None, version=None, user_file=None):
         super().__init__()
-        self._main_widget = QWidget()
         self._app = app
+        self._sdh = StockDataHandling()
+        self._main_widget = QWidget()
+        self.setCentralWidget(self._main_widget)
+        self._main_layout = QVBoxLayout(self._main_widget)
 
         # Perform variable initialization
-        # TODO: Add user file as a command line argument
-        self._active_user_file = user_file
+        self._active_user_file = (
+            user_file  # TODO: Add user file as a command line argument
+        )
+        self._icons = self._create_icon_dict()
+        self._version = version
 
         # Perform setting up different widgets and actions
-        # self._add_main_icon()
+        self.setWindowIcon(self._icons["logo"])
         self._add_main_title(title)
         self._create_actions()
         self._create_menus()
         self._create_tabs()
 
-        layout = QVBoxLayout()
-        layout.addWidget(self._tabs)
+        # Create main layout
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._config_tab, "Configuration")
+        self._tabs.addTab(self._analyze_tab, "Analyze")
+        self._main_layout.addWidget(self._tabs)
 
-        self._main_widget.setLayout(layout)
-        self.setCentralWidget(self._main_widget)
+        # Sub-layouts
+        self._config_tab_layout = QVBoxLayout(self._config_tab)
+        self._analyze_tab_layout = QVBoxLayout(self._analyze_tab)
 
-    # Private
-
-    def _add_main_icon(self):
-        # TODO: Add main icon
-        raise NotImplementedError()
+        # NOTE: Stock example
+        stock_example = FigureCanvas(Figure())
+        self._analyze_tab_layout.addWidget(stock_example)
+        self._stock_example_plt = stock_example.figure.subplots()
+        stock_df = self._sdh.get_yahoo_stock("SXR8.DE", StockTimeFrame.YTD)
+        self._stock_example_plt.plot(stock_df.index, stock_df["Close"])
 
     def _add_main_title(self, title=""):
         self.setWindowTitle(title)
 
     def _create_tabs(self):
-        self._tabs = QTabWidget()
-
         # Create first tab contents
-        tab1_dummy = QTextEdit()
-        tab1_dummy.setPlaceholderText("First tab contents")
-        self._tabs.addTab(tab1_dummy, "Tab One Dummy")
+        self._config_tab = QWidget()
 
         # Create second tab contents
-        tab2_dummy = QTextEdit()
-        tab2_dummy.setPlaceholderText("Second tab contents")
-        self._tabs.addTab(tab2_dummy, "Tab Two Dummy")
+        self._analyze_tab = QWidget()
 
     def _create_actions(self):
         # TODO: Add icons
@@ -109,13 +123,24 @@ class MainWindow(QMainWindow):
         self._help_menu.setLayoutDirection(Qt.LeftToRight)
         self._help_menu.addAction(self._about_act)
 
+    def _create_icon_dict(self):
+        # Assets are located in this directory
+        asset_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets")
+
+        logo = QIcon(os.path.join(asset_dir, "logo512.png"))
+
+        icons = {
+            "logo": logo,
+        }
+
+        return icons
+
     def _open_event(self):
         file_name, _ = QFileDialog.getOpenFileName(self)
         if file_name:
             self.active_user_file = file_name
 
     def _about_event(self):
-        # TODO: Add icons
         main_window_title = self.windowTitle()
 
         popup_title = "About"
@@ -123,19 +148,22 @@ class MainWindow(QMainWindow):
             <b>{main_window_title}</b> is a tool for evaluating stock data.
             """
 
+        if self._version is not None:
+            version_body = f"""
+                <br><br><i>Software version {self._version}</i>
+                """
+            popup_body += version_body
+
         QMessageBox.about(
             self,
             popup_title,
             popup_body,
         )
 
-    # Public
-
     def closeEvent(self, event):
         """
         Closing event that works for the default exit button and the custom ones
         """
-        # TODO: Add icons
         popup = QMessageBox()
         title = self.windowTitle()
         reply = popup.question(
@@ -152,11 +180,13 @@ class MainWindow(QMainWindow):
 
 
 class MainApplication:
-    """Create base functionality, main window, and show it on fullscreen"""
+    """
+    Create base functionality, main window, and show it on fullscreen
+    """
 
-    def __init__(self, title=None, x=None, y=None):
+    def __init__(self, title=None, version=None, x=None, y=None):
         app = QApplication(sys.argv)
-        main_window = MainWindow(app, title)
+        main_window = MainWindow(app, title, version)
 
         if x == None or y == None:
             main_window.showMaximized()

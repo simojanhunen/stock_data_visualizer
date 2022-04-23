@@ -1,4 +1,6 @@
-"""Entry point for stock_data_visualizer."""
+"""
+Entry point for stock_data_visualizer.
+"""
 
 from __cli__ import main
 

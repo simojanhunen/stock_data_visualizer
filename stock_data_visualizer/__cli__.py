@@ -1,19 +1,20 @@
-"""CLI interface for stock_data_visualizer project.
+"""
+CLI interface for stock_data_visualizer project.
 """
 
 import io
 import os
+import platform
 
-from __base__ import WINDOW_TITLE
-from stock_data_visualizing import MainWindow, MainApplication
+from __base__ import WINDOW_TITLE, VERSION_FILE
+from visualizing import MainWindow, MainApplication
 
 
 def read_version(*paths, **kwargs):
-    """Read the contents of a text file.
+    """
+    Read the contents of a text file, e.g.,
     >>> read("VERSION")
     '0.0.0'
-    >>> read("README.md")
-    ...
     """
 
     content = ""
@@ -25,14 +26,27 @@ def read_version(*paths, **kwargs):
     return content
 
 
+def os_specific_adaptation():
+    """
+    Set the Python process as unique one instead of a general Python executable when Windows OS is used
+    """
+    if platform.system() == "Windows":
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOW_TITLE)
+
+
 def main():
     """
     Main function
     """
 
+    # Any and all operating system specific adaptation is done prior to running the app
+    os_specific_adaptation()
+
     # Read version
-    version = read_version("VERSION")
+    version = read_version(VERSION_FILE)
     print(f"App version: {version}")
 
     # Run main application
-    MainApplication(WINDOW_TITLE)
+    MainApplication(WINDOW_TITLE, version)
