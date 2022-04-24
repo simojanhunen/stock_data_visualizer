@@ -91,7 +91,7 @@ class StockDataHandling:
             data_df = pdd.DataReader(stock_ticker, "yahoo", start_time, end_time)
             return data_df
         except:
-            print(f"Couldn't read stock data.")
+            print(f"Couldn't read '{stock_ticker}' stock data.")
             return pd.DataFrame()
 
     def normalize_stock_data(stock_data_df):
