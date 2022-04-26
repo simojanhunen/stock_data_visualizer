@@ -6,7 +6,7 @@ import sys
 import os
 import pandas as pd
 
-from PySide2.QtCore import Qt, QSize
+from PySide2.QtCore import Qt, QSize, QEvent
 from PySide2.QtGui import QIcon
 from PySide2.QtWidgets import (
     QApplication,
@@ -17,6 +17,7 @@ from PySide2.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QHBoxLayout,
+    QGridLayout,
     QAction,
     QMenu,
     QMessageBox,
@@ -24,13 +25,84 @@ from PySide2.QtWidgets import (
     QListWidget,
     QSizePolicy,
     QInputDialog,
+    QDialog,
+    QTableWidget,
+    QGroupBox,
+    QSpacerItem,
+    QWhatsThis,
+    QTableWidgetItem,
+    QComboBox,
+    QCheckBox,
 )
 
 from matplotlib.backends.qt_compat import QtWidgets
 from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.figure import Figure
 
-from handling import StockDataHandling, StockTimeFrame
+from handling import StockDataHandling, StockTimeFrame, get_stock_validity
+
+
+class InfoPopup:
+    """
+    Info/about popup controller
+    """
+
+    def __init__(self, parent, title, text):
+        QMessageBox.about(
+            parent,
+            title,
+            text,
+        )
+
+
+class GraphPopup(QDialog):
+    """
+    Graph popup controller
+    """
+
+    def __init__(self, parent, name, graph):
+        super().__init__(parent)
+        self.resize(800, 600)
+        self.setWindowTitle(name)
+        self.popup_layout = QGridLayout(self)
+        self.popup_layout.addWidget(graph)
+
+    def event(self, event):
+        if event.type() == QEvent.EnterWhatsThisMode:
+            QWhatsThis.leaveWhatsThisMode()
+            InfoPopup(
+                self, "Info", "A graph based on your selection of configuration values."
+            )
+            return True
+        else:
+            return QDialog.event(self, event)
+
+
+class TableWidget(QTableWidget):
+    """
+    TableWidget class that extends QTableWidget functionality to our needs
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        stocks = ["AMZN", "AAPL", "GOOG", "NFLX"]
+        combo_box_options = ["Option 1", "Option 2", "Option 3"]
+
+        self.setColumnCount(3)
+        self.setRowCount(4)
+
+        for index in range(4):
+            checkbox = QCheckBox()
+            self.setCellWidget(index, 0, checkbox)
+
+            stock = QTableWidgetItem(stocks[index])
+            self.setItem(index, 1, stock)
+
+            combo = QComboBox()
+            for t in combo_box_options:
+                combo.addItem(t)
+            self.setCellWidget(index, 2, combo)
 
 
 class MainWindow(QMainWindow):
@@ -59,54 +131,89 @@ class MainWindow(QMainWindow):
         self._create_menus()
         self._create_tabs()
 
-        # Create main layout
-        self._tabs = QTabWidget()
-        self._tabs.addTab(self._config_tab, "Configuration")
-        self._tabs.addTab(self._analyze_tab, "Analyze")
-        self._main_layout.addWidget(self._tabs)
+        # Group boxes
+        spacer_12x12 = QSpacerItem(12, 12, QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._actions_group = QGroupBox("Actions", self)
+        self._config_group = QGroupBox("Configuration", self)
 
-        # Sub-layouts
-        self._config_tab_layout = QVBoxLayout(self._config_tab)
-        self._analyze_tab_layout = QVBoxLayout(self._analyze_tab)
+        # Group box layouts
+        self._actions_group_layout = QHBoxLayout(self._actions_group)
+        self._config_group_layout = QHBoxLayout(self._config_group)
 
-        # Stock configuration
-        self._config_tab_top_layout = QHBoxLayout()
-        self._config_tab_layout.addLayout(self._config_tab_top_layout)
+        self._main_layout.addWidget(self._actions_group)
+        self._main_layout.addItem(spacer_12x12)
+        self._main_layout.addWidget(self._config_group)
 
+        self._set_stylesheets()
+
+        # Actions
         self._add_stock_button = QPushButton("Add", self)
         self._add_stock_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._add_stock_button.resize(32, 32)
         self._add_stock_button.clicked.connect(self._create_stock_entry)
-        self._config_tab_top_layout.addWidget(self._add_stock_button)
+        self._actions_group_layout.addWidget(self._add_stock_button)
 
+        self._remove_stock_button = QPushButton("Remove", self)
+        self._remove_stock_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._remove_stock_button.resize(32, 32)
+        self._remove_stock_button.clicked.connect(self._remove_active_stock_entry)
+        self._actions_group_layout.addWidget(self._remove_stock_button)
+
+        self._analyze_button = QPushButton("Draw graphs", self)
+        self._analyze_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._analyze_button.resize(32, 32)
+        self._analyze_button.clicked.connect(self._draw_graphs)
+        self._actions_group_layout.addWidget(self._analyze_button)
+
+        # Configuration
         self._stock_list = QListWidget(self)
-        self._stock_list.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Ignored)
+        self._stock_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self._stock_list.resize(512, 512)
         self._init_stock_list(pre_config_stocks)
-        self._config_tab_layout.addWidget(self._stock_list)
+        self._config_group_layout.addWidget(self._stock_list, alignment=Qt.AlignCenter)
 
-        self._update_analyze_graphs()
+        self._table_widget = TableWidget(self)
+        self._config_group_layout.addWidget(self._table_widget)
+
+    def _set_stylesheets(self):
+        self._main_widget.setStyleSheet(
+            """QGroupBox {
+            border: 1px solid gray;
+            border-radius: 6px;
+            margin-top: 0.5em;
+            }
+
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+            }
+            """
+        )
 
     def _init_stock_list(self, stocks):
         if stocks:
             for stock in stocks:
                 self._stock_list.addItem(stock)
 
-    def _update_analyze_graphs(self, timeframe=StockTimeFrame.YTD, normalized=None):
+    def _draw_graphs(self):
         # Get list of stock tickers
         sought_stocks = [
             str(self._stock_list.item(index).text())
             for index in range(self._stock_list.count())
         ]
 
-        if not sought_stocks:
-            pass
-        else:
-            for i in reversed(range(self._analyze_tab_layout.count())):
-                self._analyze_tab_layout.itemAt(i).widget().setParent(None)
+        drawn_graph = self._create_analyze_graphs(sought_stocks)
 
+        graph_popup = GraphPopup(self, "Some title", drawn_graph)
+        graph_popup.show()
+
+    def _create_analyze_graphs(
+        self, sought_stocks=None, timeframe=StockTimeFrame.YTD, normalized=None
+    ):
+        if sought_stocks:
             analyze_line_graph = FigureCanvas(Figure())
-            self._analyze_line_graph_plt = analyze_line_graph.figure.subplots()
+            analyze_line_graph_plt = analyze_line_graph.figure.subplots()
 
             # Get stock data from yahoo and concanate the data to one dataframe
             sought_stock_data = [
@@ -122,19 +229,26 @@ class MainWindow(QMainWindow):
 
             for stock in sought_stock_data:
                 try:
-                    self._analyze_line_graph_plt.plot(stock.index, stock["Close"])
+                    analyze_line_graph_plt.plot(stock.index, stock["Close"])
                 except KeyError:
                     pass
 
-            self._analyze_line_graph_plt.legend(sought_stocks, loc="best")
-            self._analyze_tab_layout.addWidget(analyze_line_graph)
+            analyze_line_graph_plt.legend(sought_stocks, loc="best")
+
+            return analyze_line_graph
 
     def _create_stock_entry(self):
         self._stock_input_popup, status = QInputDialog.getText(
             self, "Question", "Stock symbol:"
         )
-        self._stock_list.addItem(str(self._stock_input_popup))
-        self._update_analyze_graphs()
+
+        stock_input = str(self._stock_input_popup)
+
+        if get_stock_validity(stock_input):
+            self._stock_list.addItem(stock_input)
+
+    def _remove_active_stock_entry(self):
+        pass
 
     def _add_main_title(self, title=""):
         self.setWindowTitle(title)
@@ -216,11 +330,7 @@ class MainWindow(QMainWindow):
                 """
             popup_body += version_body
 
-        QMessageBox.about(
-            self,
-            popup_title,
-            popup_body,
-        )
+        InfoPopup(self, popup_title, popup_body)
 
     def closeEvent(self, event):
         """

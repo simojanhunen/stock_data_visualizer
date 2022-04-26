@@ -100,3 +100,10 @@ class StockDataHandling:
         ) / stock_data_df.std()
 
         return normalized_stock_data_df
+
+
+def get_stock_validity(stock):
+    """
+    returns True when stock name is valid, False otherwise.
+    """
+    return True
