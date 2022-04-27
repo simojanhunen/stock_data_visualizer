@@ -2,3 +2,4 @@ PySide2
 pandas
 pandas_datareader
 matplotlib
+pyqtdarktheme

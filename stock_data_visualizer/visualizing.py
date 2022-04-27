@@ -5,6 +5,7 @@ Creates GUI for the visualization.
 import sys
 import os
 import pandas as pd
+import qdarktheme
 
 from PySide2.QtCore import Qt, QSize, QEvent
 from PySide2.QtGui import QIcon
@@ -12,34 +13,94 @@ from PySide2.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
-    QTabWidget,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
     QHBoxLayout,
-    QGridLayout,
     QAction,
-    QMenu,
     QMessageBox,
     QFileDialog,
-    QListWidget,
     QSizePolicy,
     QInputDialog,
     QDialog,
-    QTableWidget,
     QGroupBox,
     QSpacerItem,
     QWhatsThis,
-    QTableWidgetItem,
-    QComboBox,
     QCheckBox,
+    QLabel,
 )
 
-from matplotlib.backends.qt_compat import QtWidgets
-from matplotlib.backends.backend_qtagg import FigureCanvas
+
 from matplotlib.figure import Figure
+from matplotlib.backends.qt_compat import QtWidgets
+from matplotlib.backends.backend_qtagg import (
+    FigureCanvas,
+    NavigationToolbar2QT as NavigationToolbar,
+)
 
 from handling import StockDataHandling, StockTimeFrame, get_stock_validity
+
+
+class CustomListItem(QWidget):
+    def __init__(self, text, active=True):
+        super().__init__()
+        layout = QHBoxLayout(self)
+
+        self.checkbox = QCheckBox()
+        self.checkbox.setFixedSize(24, 24)
+        self.checkbox.setChecked(active)
+
+        self.text = QTextEdit(text)
+        self.text.setReadOnly(True)
+        self.text.setFixedSize(128, 24)
+        self.text.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.text.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        self.remove_button = QPushButton("Remove")
+        self.remove_button.setFixedSize(96, 24)
+        self.remove_button.clicked.connect(self.remove_item)
+
+        layout.addWidget(self.checkbox)
+        layout.addWidget(self.text)
+        layout.addWidget(self.remove_button)
+
+    def is_checked(self):
+        return self.checkbox.isChecked()
+
+    def get_text(self):
+        return self.text.toPlainText()
+
+    def remove_item(self):
+        self.setParent(None)
+
+
+class CustomList(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.header_layout = QHBoxLayout()
+        self.list_layout = QVBoxLayout()
+        self.layout.addLayout(self.header_layout)
+        self.layout.addLayout(self.list_layout)
+
+        self._create_header()
+
+    def _create_header(self):
+        headers = ["Active", "Stock symbol"]
+        for header in headers:
+            label = QLabel(header)
+            self.header_layout.addWidget(label)
+
+    def add_item(self, text):
+        new_item = CustomListItem(text=text)
+        self.list_layout.addWidget(new_item)
+
+    def get_items(self):
+        items = []
+        for i in range(self.list_layout.count()):
+            item = self.list_layout.itemAt(i).widget()
+            items.append(item)
+        return items
 
 
 class InfoPopup:
@@ -60,11 +121,12 @@ class GraphPopup(QDialog):
     Graph popup controller
     """
 
-    def __init__(self, parent, name, graph):
+    def __init__(self, parent, name, graph, toolbar):
         super().__init__(parent)
-        self.resize(800, 600)
+        self.resize(1200, 800)
         self.setWindowTitle(name)
-        self.popup_layout = QGridLayout(self)
+        self.popup_layout = QVBoxLayout(self)
+        self.popup_layout.addWidget(toolbar)
         self.popup_layout.addWidget(graph)
 
     def event(self, event):
@@ -76,33 +138,6 @@ class GraphPopup(QDialog):
             return True
         else:
             return QDialog.event(self, event)
-
-
-class TableWidget(QTableWidget):
-    """
-    TableWidget class that extends QTableWidget functionality to our needs
-    """
-
-    def __init__(self, parent):
-        super().__init__(parent)
-
-        stocks = ["AMZN", "AAPL", "GOOG", "NFLX"]
-        combo_box_options = ["Option 1", "Option 2", "Option 3"]
-
-        self.setColumnCount(3)
-        self.setRowCount(4)
-
-        for index in range(4):
-            checkbox = QCheckBox()
-            self.setCellWidget(index, 0, checkbox)
-
-            stock = QTableWidgetItem(stocks[index])
-            self.setItem(index, 1, stock)
-
-            combo = QComboBox()
-            for t in combo_box_options:
-                combo.addItem(t)
-            self.setCellWidget(index, 2, combo)
 
 
 class MainWindow(QMainWindow):
@@ -118,6 +153,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._main_widget)
         self._main_layout = QVBoxLayout(self._main_widget)
 
+        # Set dark theme
+        self._app.setStyleSheet(qdarktheme.load_stylesheet("dark"))
+
         # Perform variable initialization
         self._active_user_file = user_config_file
         pre_config_stocks = self._check_user_config()
@@ -129,7 +167,6 @@ class MainWindow(QMainWindow):
         self._add_main_title(title)
         self._create_actions()
         self._create_menus()
-        self._create_tabs()
 
         # Group boxes
         spacer_12x12 = QSpacerItem(12, 12, QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -138,7 +175,7 @@ class MainWindow(QMainWindow):
 
         # Group box layouts
         self._actions_group_layout = QHBoxLayout(self._actions_group)
-        self._config_group_layout = QHBoxLayout(self._config_group)
+        self._config_group_layout = QVBoxLayout(self._config_group)
 
         self._main_layout.addWidget(self._actions_group)
         self._main_layout.addItem(spacer_12x12)
@@ -153,27 +190,17 @@ class MainWindow(QMainWindow):
         self._add_stock_button.clicked.connect(self._create_stock_entry)
         self._actions_group_layout.addWidget(self._add_stock_button)
 
-        self._remove_stock_button = QPushButton("Remove", self)
-        self._remove_stock_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self._remove_stock_button.resize(32, 32)
-        self._remove_stock_button.clicked.connect(self._remove_active_stock_entry)
-        self._actions_group_layout.addWidget(self._remove_stock_button)
-
-        self._analyze_button = QPushButton("Draw graphs", self)
+        self._analyze_button = QPushButton("Draw", self)
         self._analyze_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._analyze_button.resize(32, 32)
         self._analyze_button.clicked.connect(self._draw_graphs)
         self._actions_group_layout.addWidget(self._analyze_button)
 
         # Configuration
-        self._stock_list = QListWidget(self)
-        self._stock_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        self._stock_list.resize(512, 512)
+        self._custom_list_widget = CustomList(self)
         self._init_stock_list(pre_config_stocks)
-        self._config_group_layout.addWidget(self._stock_list, alignment=Qt.AlignCenter)
 
-        self._table_widget = TableWidget(self)
-        self._config_group_layout.addWidget(self._table_widget)
+        self._config_group_layout.addWidget(self._custom_list_widget)
 
     def _set_stylesheets(self):
         self._main_widget.setStyleSheet(
@@ -194,26 +221,31 @@ class MainWindow(QMainWindow):
     def _init_stock_list(self, stocks):
         if stocks:
             for stock in stocks:
-                self._stock_list.addItem(stock)
+                self._custom_list_widget.add_item(stock)
 
     def _draw_graphs(self):
         # Get list of stock tickers
         sought_stocks = [
-            str(self._stock_list.item(index).text())
-            for index in range(self._stock_list.count())
+            stock.get_text() for stock in self._custom_list_widget.get_items()
         ]
 
-        drawn_graph = self._create_analyze_graphs(sought_stocks)
-
-        graph_popup = GraphPopup(self, "Some title", drawn_graph)
-        graph_popup.show()
+        if len(sought_stocks) == 0:
+            InfoPopup(self, "Note", "One or more stocks have to be added!")
+        else:
+            # Create the graph based on selection and create toolbar accordingly
+            graph = self._create_analyze_graphs(sought_stocks)
+            toolbar = NavigationToolbar(graph, self)
+            toolbar.setStyleSheet("font-size: 12px;")
+            graph_popup = GraphPopup(self, self.windowTitle(), graph, toolbar)
+            graph_popup.show()
 
     def _create_analyze_graphs(
         self, sought_stocks=None, timeframe=StockTimeFrame.YTD, normalized=None
     ):
         if sought_stocks:
-            analyze_line_graph = FigureCanvas(Figure())
-            analyze_line_graph_plt = analyze_line_graph.figure.subplots()
+            fig = Figure(facecolor="#202124")
+            plt = fig.add_subplot(1, 1, 1)
+            canvas = FigureCanvas(fig)
 
             # Get stock data from yahoo and concanate the data to one dataframe
             sought_stock_data = [
@@ -229,13 +261,37 @@ class MainWindow(QMainWindow):
 
             for stock in sought_stock_data:
                 try:
-                    analyze_line_graph_plt.plot(stock.index, stock["Close"])
+                    plt.plot(stock.index, stock["Close"])
                 except KeyError:
                     pass
 
-            analyze_line_graph_plt.legend(sought_stocks, loc="best")
+            # Set colors and texts for the figure
+            plt.legend(
+                sought_stocks,
+                loc="best",
+                labelcolor="white",
+                shadow=True,
+                facecolor="#3F4042",
+            )
 
-            return analyze_line_graph
+            plt.set_facecolor("#3F4042")
+            plt.set_title("Stock development during chosen time frame", color="white")
+            plt.set_xlabel("Date")
+            plt.set_ylabel("Stock value $")
+            plt.xaxis.label.set_color("white")
+            plt.yaxis.label.set_color("white")
+            plt.tick_params(axis="x", colors="white")
+            plt.tick_params(axis="y", colors="white")
+
+            # Show grid lines
+            plt.grid(axis="both", color="gray", linestyle="-")
+
+            # Hide every second xtick label for readability
+            for n, label in enumerate(plt.xaxis.get_ticklabels()):
+                if n % 2 != 0:
+                    label.set_visible(False)
+
+            return canvas
 
     def _create_stock_entry(self):
         self._stock_input_popup, status = QInputDialog.getText(
@@ -245,20 +301,13 @@ class MainWindow(QMainWindow):
         stock_input = str(self._stock_input_popup)
 
         if get_stock_validity(stock_input):
-            self._stock_list.addItem(stock_input)
+            self._custom_list_widget.add_item(stock_input)
 
     def _remove_active_stock_entry(self):
         pass
 
     def _add_main_title(self, title=""):
         self.setWindowTitle(title)
-
-    def _create_tabs(self):
-        # Create first tab contents
-        self._config_tab = QWidget()
-
-        # Create second tab contents
-        self._analyze_tab = QWidget()
 
     def _create_actions(self):
         # TODO: Add icons
@@ -362,8 +411,7 @@ class MainWindow(QMainWindow):
     def _save_user_config(self):
         try:
             stocks = [
-                str(self._stock_list.item(index).text())
-                for index in range(self._stock_list.count())
+                stock.get_text() for stock in self._custom_list_widget.get_items()
             ]
             with open(self._active_user_file, "w") as file:
                 file.writelines("%s\n" % stock for stock in stocks)
