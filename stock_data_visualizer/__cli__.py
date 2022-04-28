@@ -76,6 +76,6 @@ def main():
         title=WINDOW_TITLE,
         version=version,
         user_config_file=user_config_file,
-        x=800,
-        y=800,
+        x=0,
+        y=0,
     )

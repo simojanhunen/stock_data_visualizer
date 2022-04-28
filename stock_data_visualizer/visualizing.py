@@ -24,7 +24,6 @@ from PySide2.QtWidgets import (
     QInputDialog,
     QDialog,
     QGroupBox,
-    QSpacerItem,
     QWhatsThis,
     QCheckBox,
     QLabel,
@@ -44,25 +43,29 @@ from handling import StockDataHandling, StockTimeFrame, get_stock_validity
 class CustomListItem(QWidget):
     def __init__(self, text, active=True):
         super().__init__()
+
         layout = QHBoxLayout(self)
 
         self.checkbox = QCheckBox()
-        self.checkbox.setFixedSize(24, 24)
         self.checkbox.setChecked(active)
+        self.checkbox.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
 
         self.text = QTextEdit(text)
-        self.text.setReadOnly(True)
         self.text.setFixedSize(128, 24)
+        self.text.setReadOnly(True)
         self.text.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.text.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.text.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
 
         self.remove_button = QPushButton("Remove")
         self.remove_button.setFixedSize(96, 24)
+        self.remove_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         self.remove_button.clicked.connect(self.remove_item)
 
         layout.addWidget(self.checkbox)
         layout.addWidget(self.text)
         layout.addWidget(self.remove_button)
+        layout.addStretch()
 
     def is_checked(self):
         return self.checkbox.isChecked()
@@ -78,18 +81,26 @@ class CustomList(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
-        self.header_layout = QHBoxLayout()
+        self.header_layout = QVBoxLayout()
         self.list_layout = QVBoxLayout()
+
         self.layout.addLayout(self.header_layout)
         self.layout.addLayout(self.list_layout)
+        self.layout.addStretch()
 
         self._create_header()
 
     def _create_header(self):
-        headers = ["Active", "Stock symbol"]
-        for header in headers:
-            label = QLabel(header)
-            self.header_layout.addWidget(label)
+        layout = QHBoxLayout()
+
+        active = QLabel("<u>A</u>ctive")
+        active.setFixedWidth(60)
+        symbol = QLabel("<u>S</u>tock symbol")
+
+        layout.addWidget(active)
+        layout.addWidget(symbol)
+        layout.addStretch()
+        self.header_layout.addLayout(layout)
 
     def add_item(self, text):
         new_item = CustomListItem(text=text)
@@ -99,6 +110,13 @@ class CustomList(QWidget):
         items = []
         for i in range(self.list_layout.count()):
             item = self.list_layout.itemAt(i).widget()
+            items.append(item)
+        return items
+
+    def get_item_names(self):
+        items = []
+        for i in range(self.list_layout.count()):
+            item = self.list_layout.itemAt(i).widget().get_text()
             items.append(item)
         return items
 
@@ -121,9 +139,9 @@ class GraphPopup(QDialog):
     Graph popup controller
     """
 
-    def __init__(self, parent, name, graph, toolbar):
+    def __init__(self, parent, name, graph, toolbar, x=900, y=600):
         super().__init__(parent)
-        self.resize(1200, 800)
+        self.resize(x, y)
         self.setWindowTitle(name)
         self.popup_layout = QVBoxLayout(self)
         self.popup_layout.addWidget(toolbar)
@@ -169,16 +187,15 @@ class MainWindow(QMainWindow):
         self._create_menus()
 
         # Group boxes
-        spacer_12x12 = QSpacerItem(12, 12, QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._actions_group = QGroupBox("Actions", self)
-        self._config_group = QGroupBox("Configuration", self)
+        self._config_group = QGroupBox("Stock configuration", self)
 
         # Group box layouts
         self._actions_group_layout = QHBoxLayout(self._actions_group)
         self._config_group_layout = QVBoxLayout(self._config_group)
 
         self._main_layout.addWidget(self._actions_group)
-        self._main_layout.addItem(spacer_12x12)
+        self._main_layout.addSpacing(6)
         self._main_layout.addWidget(self._config_group)
 
         self._set_stylesheets()
@@ -188,19 +205,23 @@ class MainWindow(QMainWindow):
         self._add_stock_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._add_stock_button.resize(32, 32)
         self._add_stock_button.clicked.connect(self._create_stock_entry)
-        self._actions_group_layout.addWidget(self._add_stock_button)
 
         self._analyze_button = QPushButton("Draw", self)
         self._analyze_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._analyze_button.resize(32, 32)
         self._analyze_button.clicked.connect(self._draw_graphs)
+
+        self._actions_group_layout.addStretch()
+        self._actions_group_layout.addWidget(self._add_stock_button)
         self._actions_group_layout.addWidget(self._analyze_button)
+        self._actions_group_layout.addStretch()
 
         # Configuration
         self._custom_list_widget = CustomList(self)
         self._init_stock_list(pre_config_stocks)
 
         self._config_group_layout.addWidget(self._custom_list_widget)
+        self._config_group_layout.addStretch()
 
     def _set_stylesheets(self):
         self._main_widget.setStyleSheet(
@@ -226,11 +247,19 @@ class MainWindow(QMainWindow):
     def _draw_graphs(self):
         # Get list of stock tickers
         sought_stocks = [
-            stock.get_text() for stock in self._custom_list_widget.get_items()
+            stock.get_text()
+            for stock in self._custom_list_widget.get_items()
+            if stock.is_checked()
         ]
 
         if len(sought_stocks) == 0:
             InfoPopup(self, "Note", "One or more stocks have to be added!")
+        elif len(sought_stocks) > 16:
+            InfoPopup(
+                self,
+                "Note",
+                "Maximum amount of analyzed stocks is <b>16</b>, please reduce the number of stocks active in your stock configuration.",
+            )
         else:
             # Create the graph based on selection and create toolbar accordingly
             graph = self._create_analyze_graphs(sought_stocks)
@@ -295,13 +324,27 @@ class MainWindow(QMainWindow):
 
     def _create_stock_entry(self):
         self._stock_input_popup, status = QInputDialog.getText(
-            self, "Question", "Stock symbol:"
+            self, "Question", "Stock symbol"
         )
 
-        stock_input = str(self._stock_input_popup)
+        stock_input = str(self._stock_input_popup).upper()
+
+        if stock_input in self._custom_list_widget.get_item_names():
+            InfoPopup(
+                self,
+                "Note",
+                f"The stock symbol '<b>{stock_input}</b>' you're trying to add has been already added!",
+            )
+            return
 
         if get_stock_validity(stock_input):
             self._custom_list_widget.add_item(stock_input)
+        else:
+            InfoPopup(
+                self,
+                "Note",
+                "The stock symbol you're trying to add is not a valid stock symbol!",
+            )
 
     def _remove_active_stock_entry(self):
         pass
@@ -336,12 +379,6 @@ class MainWindow(QMainWindow):
         self._file_menu.addSeparator()
         self._file_menu.addAction(self._exit_act)
         self._file_menu.setLayoutDirection(Qt.LeftToRight)
-
-        self.menuBar().addSeparator()
-
-        # Settings menu
-        self._settings_menu = self.menuBar().addMenu("Settings")
-        self._settings_menu.setLayoutDirection(Qt.LeftToRight)
 
         self.menuBar().addSeparator()
 
@@ -411,7 +448,9 @@ class MainWindow(QMainWindow):
     def _save_user_config(self):
         try:
             stocks = [
-                stock.get_text() for stock in self._custom_list_widget.get_items()
+                stock.get_text()
+                for stock in self._custom_list_widget.get_items()
+                if stock.is_checked()
             ]
             with open(self._active_user_file, "w") as file:
                 file.writelines("%s\n" % stock for stock in stocks)
@@ -430,11 +469,8 @@ class MainApplication:
             app=app, title=title, version=version, user_config_file=user_config_file
         )
 
-        if x == None or y == None:
-            main_window.showMaximized()
-        else:
-            main_window.resize(x, y)
-            main_window.show()
+        main_window.resize(x, y)
+        main_window.show()
 
         # Return whatever the base application gives on return
         sys.exit(app.exec_())
