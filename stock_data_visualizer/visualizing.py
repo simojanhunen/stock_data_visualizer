@@ -17,6 +17,7 @@ from PySide2.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QHBoxLayout,
+    QGridLayout,
     QAction,
     QMessageBox,
     QFileDialog,
@@ -27,6 +28,7 @@ from PySide2.QtWidgets import (
     QWhatsThis,
     QCheckBox,
     QLabel,
+    QComboBox,
 )
 
 
@@ -37,7 +39,7 @@ from matplotlib.backends.backend_qtagg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
 
-from handling import StockDataHandling, StockTimeFrame, get_stock_validity
+from handling import StockDataHandling, StockTimeFrame, get_stock_validity, get_available_time_frames
 
 
 class CustomListItem(QWidget):
@@ -191,7 +193,7 @@ class MainWindow(QMainWindow):
         self._config_group = QGroupBox("Stock configuration", self)
 
         # Group box layouts
-        self._actions_group_layout = QHBoxLayout(self._actions_group)
+        self._actions_group_layout = QGridLayout(self._actions_group)
         self._config_group_layout = QVBoxLayout(self._config_group)
 
         self._main_layout.addWidget(self._actions_group)
@@ -201,20 +203,21 @@ class MainWindow(QMainWindow):
         self._set_stylesheets()
 
         # Actions
-        self._add_stock_button = QPushButton("Add", self)
-        self._add_stock_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self._add_stock_button.resize(32, 32)
+        self._add_stock_button = QPushButton("Add stock", self)
         self._add_stock_button.clicked.connect(self._create_stock_entry)
 
         self._analyze_button = QPushButton("Draw", self)
-        self._analyze_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self._analyze_button.resize(32, 32)
         self._analyze_button.clicked.connect(self._draw_graphs)
 
-        self._actions_group_layout.addStretch()
-        self._actions_group_layout.addWidget(self._add_stock_button)
-        self._actions_group_layout.addWidget(self._analyze_button)
-        self._actions_group_layout.addStretch()
+        self._time_frame_box = QComboBox()
+        self._time_frame_box.addItems(get_available_time_frames())
+
+        self._normalize_checkbox = QCheckBox("Normalized")
+
+        self._actions_group_layout.addWidget(self._add_stock_button, 0, 0, 1, 1)
+        self._actions_group_layout.addWidget(self._time_frame_box, 0, 1, 1, 1)
+        self._actions_group_layout.addWidget(self._normalize_checkbox, 1, 1, 1, 1)
+        self._actions_group_layout.addWidget(self._analyze_button, 2, 1, 1, 1)
 
         # Configuration
         self._custom_list_widget = CustomList(self)
@@ -222,6 +225,9 @@ class MainWindow(QMainWindow):
 
         self._config_group_layout.addWidget(self._custom_list_widget)
         self._config_group_layout.addStretch()
+
+    def _get_time_frame(self):
+        return StockTimeFrame.from_str(self._time_frame_box.currentText()) 
 
     def _set_stylesheets(self):
         self._main_widget.setStyleSheet(
@@ -262,14 +268,16 @@ class MainWindow(QMainWindow):
             )
         else:
             # Create the graph based on selection and create toolbar accordingly
-            graph = self._create_analyze_graphs(sought_stocks)
+            normalized = self._normalize_checkbox.isChecked()
+            time_frame = self._get_time_frame()
+            graph = self._create_analyze_graphs(sought_stocks, time_frame=time_frame, normalized=normalized)
             toolbar = NavigationToolbar(graph, self)
             toolbar.setStyleSheet("font-size: 12px;")
             graph_popup = GraphPopup(self, self.windowTitle(), graph, toolbar)
             graph_popup.show()
 
     def _create_analyze_graphs(
-        self, sought_stocks=None, timeframe=StockTimeFrame.YTD, normalized=None
+        self, sought_stocks=None, time_frame=StockTimeFrame.YTD, normalized=None
     ):
         if sought_stocks:
             fig = Figure(facecolor="#202124")
@@ -278,7 +286,7 @@ class MainWindow(QMainWindow):
 
             # Get stock data from yahoo and concanate the data to one dataframe
             sought_stock_data = [
-                self._sdh.get_yahoo_stock(ticker, timeframe) for ticker in sought_stocks
+                self._sdh.get_yahoo_stock(ticker, time_frame) for ticker in sought_stocks
             ]
             stock_df = pd.concat(sought_stock_data, axis=1, keys=sought_stocks)
 

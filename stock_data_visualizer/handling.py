@@ -24,7 +24,31 @@ class StockTimeFrame(Enum):
     YEAR3 = 4
     YEAR5 = 5
     MAX = 6
+    CUSTOM = 7
 
+    @staticmethod
+    def from_str(label):
+        if label in ('YTD'):
+            return StockTimeFrame.YTD
+        elif label in ('1 Day'):
+            return StockTimeFrame.DAY
+        elif label in ('1 Week'):
+            return StockTimeFrame.WEEK
+        elif label in ('1 Year'):
+            return StockTimeFrame.YEAR1
+        elif label in ('3 Years'):
+            return StockTimeFrame.YEAR3
+        elif label in ('5 Years'):
+            return StockTimeFrame.YEAR5
+        elif label in ('Max'):
+            return StockTimeFrame.MAX
+        elif label in ('Custom'):
+            raise NotImplementedError
+        else:
+            raise NotImplementedError
+
+def get_available_time_frames():
+    return ["YTD", "1 Day", "1 Week", "1 Year", "3 Years", "5 Years", "Max", "Custom"]
 
 class StockDataHandling:
     """
@@ -94,7 +118,7 @@ class StockDataHandling:
             print(f"Couldn't read '{stock_ticker}' stock data.")
             return pd.DataFrame()
 
-    def normalize_stock_data(stock_data_df):
+    def normalize_stock_data(self, stock_data_df):
         normalized_stock_data_df = (
             stock_data_df - stock_data_df.mean()
         ) / stock_data_df.std()
