@@ -10,6 +10,8 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue)](#license "Go to license section")
 
+<img src="assets/preview.png" width="400">
+
 </div>
 
 ## Running
